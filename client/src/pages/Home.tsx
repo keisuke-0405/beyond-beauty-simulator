@@ -5,24 +5,22 @@
  * Colors: Deep charcoal bg, Shiseido Red (#C8102E) accents, ivory text
  * Fonts: Playfair Display (headings), Noto Sans JP (body)
  *
- * Logic notes:
- * - "スペースのみ" supports quantity selection (number of spaces)
- * - "角小間" max corners = floor(boothCount / 2) when 1–2 booths → 1 corner per 2 booths
- *   Rule: 1–2小間 → max 1角, 3–4小間 → max 2角, etc.
- *   Specifically: 1小間=1角, 2小間=1角, 3小間=1角(壁面パネルのみ), 4小間=2角
- *   Simplified: maxCorners = ceil(boothCount / 2) but capped at boothCount
- *   Actual rule from PDF: 1–2小間→1角, 4小間→2角 → maxCorners = floor((boothCount + 1) / 2)
+ * Booth image preview: clicking a booth option reveals an elegant modal/lightbox
+ * with the booth diagram image, specs, and included items.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronDown, ChevronUp, Info, X, Minus, Plus } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Info, X, Minus, Plus, ZoomIn } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/hero-red-hw6DdkpeYAjQrn8iYmXD9h.webp";
 
-// Shiseido Red in CSS (for inline styles where Tailwind can't reach)
+const IMG_1KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/1koma_98007682.png";
+const IMG_2KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/2koma_7a7a250f.png";
+const IMG_STARTUP = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/startup-booth_e98e635a.jpg";
+
 const RED = "oklch(0.48 0.22 20)";
 const RED_LIGHT = "oklch(0.60 0.20 20)";
 const RED_MUTED = "oklch(0.48 0.22 20 / 0.15)";
@@ -30,8 +28,61 @@ const IVORY = "oklch(0.97 0.008 60)";
 const IVORY_MUTED = "oklch(0.75 0.008 60)";
 const IVORY_FAINT = "oklch(0.45 0.005 60)";
 const CARD_BG = "oklch(0.17 0.015 20)";
-const CARD_HOVER = "oklch(0.20 0.015 20)";
-const CARD_SELECTED = "oklch(0.18 0.03 20)";
+
+// ─── Booth preview data ───────────────────────────────────────────────────────
+
+interface BoothPreview {
+  image: string;
+  title: string;
+  size: string;
+  specs: string[];
+  included: string[];
+  bgLight?: boolean; // true = image is light, use dark overlay
+}
+
+const BOOTH_PREVIEWS: Record<string, BoothPreview> = {
+  booth_1: {
+    image: IMG_1KOMA,
+    title: "1小間",
+    size: "9㎡（間口3m × 奥行3m × 高さ2.7m）",
+    specs: ["パッケージ装飾付き", "会期中清掃付き"],
+    included: [
+      "バラペット（社名板）",
+      "スポットライト 4灯",
+      "カーペット",
+      "コンセント 1kw/2口 × 1か所",
+      "1kw 電気工事費・使用料",
+    ],
+    bgLight: true,
+  },
+  booth_2: {
+    image: IMG_2KOMA,
+    title: "2小間",
+    size: "18㎡（間口6m × 奥行3m × 高さ2.7m）",
+    specs: ["パッケージ装飾付き", "会期中清掃付き"],
+    included: [
+      "バラペット（社名板）",
+      "スポットライト 8灯",
+      "カーペット",
+      "コンセント 1kw/2口 × 1か所",
+      "1kw 電気工事費・使用料",
+    ],
+    bgLight: true,
+  },
+  booth_startup: {
+    image: IMG_STARTUP,
+    title: "Start up ブース",
+    size: "4㎡（間口2m × 奥行2m）",
+    specs: ["創業5年以内の企業限定 10社", "角小間選択不可"],
+    included: [
+      "社名板",
+      "スポットライト 2灯",
+      "カーペット（赤）",
+      "パッケージ装飾",
+    ],
+    bgLight: false,
+  },
+};
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -40,12 +91,11 @@ interface Option {
   label: string;
   price: number;
   note?: string;
-  /** radio = mutually exclusive within groupId, single = independent toggle, qty = quantity-based */
   type: "radio" | "single" | "qty";
   groupId?: string;
   maxQty?: number;
-  /** If true, quantity is driven by booth count logic (corner booths) */
   cornerLinked?: boolean;
+  previewId?: string; // key into BOOTH_PREVIEWS
 }
 
 interface Category {
@@ -70,6 +120,7 @@ const CATEGORIES: Category[] = [
         note: "9㎡（間口3m×奥行3m）",
         type: "radio",
         groupId: "booth_size",
+        previewId: "booth_1",
       },
       {
         id: "booth_2",
@@ -78,6 +129,7 @@ const CATEGORIES: Category[] = [
         note: "18㎡（間口6m×奥行3m）",
         type: "radio",
         groupId: "booth_size",
+        previewId: "booth_2",
       },
       {
         id: "booth_space",
@@ -94,6 +146,7 @@ const CATEGORIES: Category[] = [
         note: "4㎡（間口2m×奥行2m）※角小間選択不可",
         type: "radio",
         groupId: "booth_size",
+        previewId: "booth_startup",
       },
     ],
   },
@@ -118,7 +171,7 @@ const CATEGORIES: Category[] = [
     id: "leadgrab",
     title: "Lead Grab（来場者バッジ読み取り）",
     icon: "📱",
-    note: "来場者のバッジをスキャンして見込み客情報を取得するシステム。追加アカウントは事務局へ。",
+    note: "来場者のバッジをスキャンして見込み客情報を取得するシステム。",
     options: [
       {
         id: "leadgrab_3",
@@ -133,7 +186,7 @@ const CATEGORIES: Category[] = [
     id: "presentation",
     title: "会場内プレゼンテーション",
     icon: "🎤",
-    note: "各枠30分。枠が埋まり次第締め切り。最新の空き状況は事務局へ。",
+    note: "各枠30分。枠が埋まり次第締め切り。",
     options: [
       { id: "pres_0930_a", label: "9月30日（水） 10:20〜10:50", price: 100000, note: "(a) 100,000円", type: "single" },
       { id: "pres_1001_b1", label: "10月1日（木） 11:05〜11:35", price: 120000, note: "(b) 120,000円", type: "single" },
@@ -142,7 +195,7 @@ const CATEGORIES: Category[] = [
       { id: "pres_1001_b4", label: "10月1日（木） 13:20〜13:50", price: 120000, note: "(b) 120,000円", type: "single" },
       { id: "pres_1001_b5", label: "10月1日（木） 14:05〜14:35", price: 120000, note: "(b) 120,000円", type: "single" },
       { id: "pres_1001_b6", label: "10月1日（木） 14:50〜15:20", price: 120000, note: "(b) 120,000円", type: "single" },
-      { id: "pres_1002_b", label: "10月2日（金） 15:35〜16:05", price: 120000, note: "(b) 120,000円 ※10月2日のみ100,000円", type: "single" },
+      { id: "pres_1002_b", label: "10月2日（金） 15:35〜16:05", price: 120000, note: "(b) 120,000円", type: "single" },
       { id: "pres_1002_a", label: "10月2日（金） 16:20〜16:50", price: 100000, note: "(a) 100,000円", type: "single" },
     ],
   },
@@ -177,29 +230,17 @@ function formatYen(amount: number): string {
   return "¥" + amount.toLocaleString("ja-JP");
 }
 
-/** Returns the number of 小間 from selected booth option + quantity */
 function getBoothCount(selectedIds: Set<string>, quantities: Record<string, number>): number {
   if (selectedIds.has("booth_1")) return 1;
   if (selectedIds.has("booth_2")) return 2;
-  if (selectedIds.has("booth_startup")) return 0; // startup cannot have corner
+  if (selectedIds.has("booth_startup")) return 0;
   if (selectedIds.has("booth_space")) return quantities["booth_space"] ?? 1;
   return 0;
 }
 
-/**
- * Max corners:
- * 0 = 0 (no booth or startup)
- * 1 = 1
- * 2 = 1
- * 3 = 1 (3小間以上はスペースのみ扱い、壁面パネルのみ)
- * 4 = 2
- * 5–6 = 2
- * 8 = 4  (general: floor(count/2))
- */
 function getMaxCorners(boothCount: number): number {
   if (boothCount <= 0) return 0;
-  if (boothCount === 1) return 1;
-  if (boothCount === 2) return 1;
+  if (boothCount <= 2) return 1;
   return Math.floor(boothCount / 2);
 }
 
@@ -229,6 +270,130 @@ function useCountUp(target: number, duration = 500) {
   }, [target, duration]);
 
   return display;
+}
+
+// ─── Booth Preview Modal ──────────────────────────────────────────────────────
+
+function BoothModal({
+  preview,
+  onClose,
+}: {
+  preview: BoothPreview;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "oklch(0 0 0 / 0.85)", backdropFilter: "blur(8px)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.92, y: 20 }}
+          transition={{ type: "spring", damping: 24, stiffness: 300 }}
+          className="relative w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl"
+          style={{ background: "oklch(0.15 0.015 20)", border: `1px solid ${RED}40` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Close button */}
+          <button
+            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ background: "oklch(0 0 0 / 0.5)", color: IVORY }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = RED)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "oklch(0 0 0 / 0.5)")}
+            onClick={onClose}
+          >
+            <X size={14} />
+          </button>
+
+          {/* Image area */}
+          <div
+            className="relative flex items-center justify-center"
+            style={{
+              background: preview.bgLight
+                ? "oklch(0.96 0 0)"
+                : "oklch(0.12 0.01 20)",
+              minHeight: "280px",
+            }}
+          >
+            <img
+              src={preview.image}
+              alt={preview.title}
+              className="max-h-72 w-auto object-contain"
+              style={{ maxWidth: "100%" }}
+            />
+            {/* Subtle red gradient at bottom */}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-16"
+              style={{
+                background: `linear-gradient(to top, oklch(0.15 0.015 20), transparent)`,
+              }}
+            />
+          </div>
+
+          {/* Info area */}
+          <div className="px-6 py-5">
+            {/* Title + size */}
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="red-line w-8 mb-2" />
+                <h2
+                  className="text-xl font-bold"
+                  style={{ fontFamily: "'Playfair Display', serif", color: IVORY }}
+                >
+                  {preview.title}
+                </h2>
+                <p className="text-sm mt-0.5" style={{ color: IVORY_MUTED }}>{preview.size}</p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 justify-end">
+                {preview.specs.map((s) => (
+                  <span
+                    key={s}
+                    className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ background: RED_MUTED, color: RED_LIGHT, border: `1px solid ${RED}40` }}
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Included items */}
+            <div
+              className="rounded-xl p-4"
+              style={{ background: "oklch(0.12 0.01 20)", border: "1px solid oklch(1 0 0 / 8%)" }}
+            >
+              <p className="text-xs font-semibold tracking-wider uppercase mb-3" style={{ color: IVORY_FAINT }}>
+                セット内容
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {preview.included.map((item) => (
+                  <div key={item} className="flex items-center gap-2">
+                    <div
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ background: RED }}
+                    />
+                    <span className="text-sm" style={{ color: IVORY_MUTED }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
 }
 
 // ─── QtyControl ──────────────────────────────────────────────────────────────
@@ -287,6 +452,7 @@ function OptionRow({
   maxQty,
   onToggle,
   onQtyChange,
+  onPreviewClick,
   disabled = false,
 }: {
   option: Option;
@@ -295,10 +461,12 @@ function OptionRow({
   maxQty?: number;
   onToggle: () => void;
   onQtyChange: (qty: number) => void;
+  onPreviewClick?: () => void;
   disabled?: boolean;
 }) {
   const effectiveMax = maxQty ?? option.maxQty ?? 99;
   const isQty = option.type === "qty";
+  const hasPreview = !!option.previewId;
 
   return (
     <motion.div
@@ -309,7 +477,7 @@ function OptionRow({
       whileTap={disabled ? {} : { scale: 0.998 }}
     >
       <div className="flex items-start gap-3">
-        {/* Checkbox / indicator */}
+        {/* Checkbox */}
         <div
           className="mt-0.5 w-5 h-5 rounded-sm flex-shrink-0 flex items-center justify-center border transition-all duration-200"
           style={
@@ -331,19 +499,46 @@ function OptionRow({
           )}
         </div>
 
-        {/* Price */}
-        <div className="text-right flex-shrink-0 ml-2">
-          <span
-            className="text-sm font-semibold amount-display"
-            style={{ color: selected ? RED_LIGHT : IVORY_FAINT }}
-          >
-            {formatYen(option.price)}
-          </span>
-          <span className="text-xs ml-0.5" style={{ color: IVORY_FAINT }}>税別</span>
+        {/* Preview button + Price */}
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          {hasPreview && (
+            <button
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all"
+              style={{
+                background: selected ? `${RED}20` : "oklch(1 0 0 / 6%)",
+                color: selected ? RED_LIGHT : IVORY_FAINT,
+                border: `1px solid ${selected ? RED + "50" : "oklch(1 0 0 / 12%)"}`,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewClick?.();
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = `${RED}25`;
+                e.currentTarget.style.color = RED_LIGHT;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = selected ? `${RED}20` : "oklch(1 0 0 / 6%)";
+                e.currentTarget.style.color = selected ? RED_LIGHT : IVORY_FAINT;
+              }}
+            >
+              <ZoomIn size={10} />
+              <span>詳細</span>
+            </button>
+          )}
+          <div className="text-right">
+            <span
+              className="text-sm font-semibold amount-display"
+              style={{ color: selected ? RED_LIGHT : IVORY_FAINT }}
+            >
+              {formatYen(option.price)}
+            </span>
+            <span className="text-xs ml-0.5" style={{ color: IVORY_FAINT }}>税別</span>
+          </div>
         </div>
       </div>
 
-      {/* Quantity row — shown when selected AND type is qty */}
+      {/* Quantity row */}
       {isQty && selected && (
         <div
           className="mt-3 flex items-center gap-3 pl-8"
@@ -370,6 +565,63 @@ function OptionRow({
   );
 }
 
+// ─── Booth Visual Showcase (inline, shown in booth category) ──────────────────
+
+function BoothShowcase({ onPreview }: { onPreview: (previewId: string) => void }) {
+  const booths = [
+    { id: "booth_1", label: "1小間", size: "9㎡", img: IMG_1KOMA, light: true },
+    { id: "booth_2", label: "2小間", size: "18㎡", img: IMG_2KOMA, light: true },
+    { id: "booth_startup", label: "Start up", size: "4㎡", img: IMG_STARTUP, light: false },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-2 mb-3">
+      {booths.map((b) => (
+        <motion.button
+          key={b.id}
+          className="relative rounded-lg overflow-hidden group text-left"
+          style={{
+            border: "1px solid oklch(1 0 0 / 10%)",
+            background: b.light ? "oklch(0.93 0 0)" : "oklch(0.12 0.01 20)",
+          }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onPreview(b.id)}
+        >
+          {/* Image */}
+          <div className="h-20 flex items-center justify-center p-2">
+            <img
+              src={b.img}
+              alt={b.label}
+              className="h-full w-full object-contain"
+            />
+          </div>
+
+          {/* Hover overlay */}
+          <div
+            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            style={{ background: "oklch(0 0 0 / 0.55)" }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <ZoomIn size={18} style={{ color: IVORY }} />
+              <span className="text-xs font-medium" style={{ color: IVORY }}>詳細を見る</span>
+            </div>
+          </div>
+
+          {/* Label bar */}
+          <div
+            className="px-2 py-1.5"
+            style={{ borderTop: "1px solid oklch(1 0 0 / 10%)", background: CARD_BG }}
+          >
+            <p className="text-xs font-semibold" style={{ color: IVORY_MUTED }}>{b.label}</p>
+            <p className="text-xs" style={{ color: IVORY_FAINT }}>{b.size}</p>
+          </div>
+        </motion.button>
+      ))}
+    </div>
+  );
+}
+
 // ─── CategorySection ──────────────────────────────────────────────────────────
 
 function CategorySection({
@@ -379,6 +631,7 @@ function CategorySection({
   cornerMax,
   onToggle,
   onQtyChange,
+  onPreviewClick,
 }: {
   category: Category;
   selectedIds: Set<string>;
@@ -386,6 +639,7 @@ function CategorySection({
   cornerMax: number;
   onToggle: (optionId: string, groupId?: string) => void;
   onQtyChange: (optionId: string, qty: number) => void;
+  onPreviewClick: (previewId: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const selectedCount = category.options.filter((o) => selectedIds.has(o.id)).length;
@@ -443,6 +697,11 @@ function CategorySection({
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-2">
+              {/* Booth showcase thumbnails for the booth category */}
+              {category.id === "booth" && (
+                <BoothShowcase onPreview={onPreviewClick} />
+              )}
+
               {category.options.map((opt) => {
                 const isCorner = opt.cornerLinked;
                 const isStartupSelected = selectedIds.has("booth_startup");
@@ -458,6 +717,7 @@ function CategorySection({
                     maxQty={effectiveMax}
                     onToggle={() => onToggle(opt.id, opt.groupId)}
                     onQtyChange={(qty) => onQtyChange(opt.id, qty)}
+                    onPreviewClick={opt.previewId ? () => onPreviewClick(opt.previewId!) : undefined}
                     disabled={disabled}
                   />
                 );
@@ -475,17 +735,15 @@ function CategorySection({
 export default function Home() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [activePreview, setActivePreview] = useState<string | null>(null);
 
-  // Derived booth count & corner max
   const boothCount = getBoothCount(selectedIds, quantities);
   const cornerMax = getMaxCorners(boothCount);
 
-  // When booth changes, clamp corner quantity to new max
   useEffect(() => {
     if (!selectedIds.has("corner_1")) return;
     const currentCorners = quantities["corner_1"] ?? 1;
     if (cornerMax === 0) {
-      // Deselect corner if no booth
       setSelectedIds((prev) => {
         const next = new Set(prev);
         next.delete("corner_1");
@@ -496,7 +754,6 @@ export default function Home() {
     }
   }, [cornerMax, selectedIds, quantities]);
 
-  // Compute total
   const total = Array.from(selectedIds).reduce((sum, id) => {
     for (const cat of CATEGORIES) {
       const opt = cat.options.find((o) => o.id === id);
@@ -512,7 +769,6 @@ export default function Home() {
   const animatedTotal = useCountUp(total);
   const animatedWithTax = useCountUp(totalWithTax);
 
-  // Selected items for summary
   const selectedItems = Array.from(selectedIds).map((id) => {
     for (const cat of CATEGORIES) {
       const opt = cat.options.find((o) => o.id === id);
@@ -562,6 +818,8 @@ export default function Home() {
     setQuantities({});
   }
 
+  const activePreviewData = activePreview ? BOOTH_PREVIEWS[activePreview] : null;
+
   return (
     <div className="min-h-screen" style={{ background: "oklch(0.13 0.01 20)" }}>
 
@@ -574,7 +832,6 @@ export default function Home() {
           backgroundPosition: "center 30%",
         }}
       >
-        {/* Gradient overlay */}
         <div
           className="absolute inset-0"
           style={{
@@ -585,9 +842,7 @@ export default function Home() {
 
         <div className="relative container py-12 md:py-16">
           <div className="flex items-start justify-between flex-wrap gap-6">
-            {/* Title block */}
             <div>
-              {/* Thin red accent line */}
               <div className="red-line w-12 mb-3" />
               <p
                 className="text-xs font-medium tracking-[0.2em] uppercase mb-2"
@@ -608,7 +863,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Event info card */}
             <div
               className="rounded-xl px-5 py-4 backdrop-blur-sm"
               style={{
@@ -631,7 +885,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Notice */}
           <div
             className="mt-6 flex items-start gap-2.5 rounded-lg px-4 py-3 max-w-2xl"
             style={{
@@ -670,10 +923,10 @@ export default function Home() {
                 cornerMax={cornerMax}
                 onToggle={handleToggle}
                 onQtyChange={handleQtyChange}
+                onPreviewClick={setActivePreview}
               />
             ))}
 
-            {/* Corner info box — shown when booth is selected */}
             {boothCount > 0 && !selectedIds.has("booth_startup") && (
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
@@ -725,7 +978,6 @@ export default function Home() {
               className="rounded-xl overflow-hidden"
               style={{ border: "1px solid oklch(1 0 0 / 10%)", background: CARD_BG }}
             >
-              {/* Panel header */}
               <div
                 className="px-5 py-4 flex items-center justify-between"
                 style={{ borderBottom: "1px solid oklch(1 0 0 / 8%)" }}
@@ -752,7 +1004,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Selected items list */}
               <div className="px-5 py-4 min-h-[100px]">
                 {selectedItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -807,7 +1058,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Totals */}
               <div
                 className="px-5 py-4"
                 style={{ borderTop: "1px solid oklch(1 0 0 / 8%)", background: "oklch(0.15 0.01 20)" }}
@@ -825,7 +1075,6 @@ export default function Home() {
                   </span>
                 </div>
 
-                {/* Big total */}
                 {total > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
@@ -909,7 +1158,7 @@ export default function Home() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="lg:hidden fixed bottom-0 left-0 right-0 z-50"
+            className="lg:hidden fixed bottom-0 left-0 right-0 z-40"
           >
             <div
               className="px-5 py-4 flex items-center justify-between shadow-2xl"
@@ -937,6 +1186,14 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Booth Preview Modal ── */}
+      {activePreviewData && (
+        <BoothModal
+          preview={activePreviewData}
+          onClose={() => setActivePreview(null)}
+        />
+      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ChevronDown, ChevronUp, Info, X, Minus, Plus, ZoomIn } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Info, X, Minus, Plus, ZoomIn, Tag, Sparkles } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -223,6 +223,33 @@ const CATEGORIES: Category[] = [
     ],
   },
 ];
+
+// ─── Discount logic ──────────────────────────────────────────────────────────
+
+// 割引タイプ: null = 割引なし, 'early' = 早期割引(3万/小間), 'repeat' = リピート割引(6万/小間)
+type DiscountType = null | "early" | "repeat";
+
+/**
+ * 割引額を計算する
+ * - 1小間/2小間パッケージ: 1小間=3万, 2小間=6万 (early) / 1小間=6万, 2小間=12万 (repeat)
+ * - スペースのみ: 小間数 × 3万 (early) / 小間数 × 6万 (repeat)
+ * - Startup / その他オプション: 割引対象外
+ */
+function calcDiscount(
+  discountType: DiscountType,
+  selectedIds: Set<string>,
+  quantities: Record<string, number>
+): number {
+  if (!discountType) return 0;
+  const perKoma = discountType === "early" ? 30000 : 60000;
+  if (selectedIds.has("booth_1")) return perKoma * 1;
+  if (selectedIds.has("booth_2")) return perKoma * 2;
+  if (selectedIds.has("booth_space")) {
+    const qty = quantities["booth_space"] ?? 1;
+    return perKoma * qty;
+  }
+  return 0;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -736,6 +763,23 @@ export default function Home() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [activePreview, setActivePreview] = useState<string | null>(null);
+  const [discountType, setDiscountType] = useState<DiscountType>(null);
+  const [secretVisible, setSecretVisible] = useState(false);
+  const secretClickCount = useRef(0);
+  const secretClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // フッターのロゴを5回クリックで秘密エリアを表示
+  const handleSecretTrigger = useCallback(() => {
+    secretClickCount.current += 1;
+    if (secretClickTimer.current) clearTimeout(secretClickTimer.current);
+    secretClickTimer.current = setTimeout(() => {
+      secretClickCount.current = 0;
+    }, 2000);
+    if (secretClickCount.current >= 5) {
+      setSecretVisible(true);
+      secretClickCount.current = 0;
+    }
+  }, []);
 
   const boothCount = getBoothCount(selectedIds, quantities);
   const cornerMax = getMaxCorners(boothCount);
@@ -754,6 +798,8 @@ export default function Home() {
     }
   }, [cornerMax, selectedIds, quantities]);
 
+  const discount = calcDiscount(discountType, selectedIds, quantities);
+
   const total = Array.from(selectedIds).reduce((sum, id) => {
     for (const cat of CATEGORIES) {
       const opt = cat.options.find((o) => o.id === id);
@@ -765,9 +811,11 @@ export default function Home() {
     return sum;
   }, 0);
 
-  const totalWithTax = Math.round(total * 1.1);
-  const animatedTotal = useCountUp(total);
+  const discountedTotal = Math.max(0, total - discount);
+  const totalWithTax = Math.round(discountedTotal * 1.1);
+  const animatedTotal = useCountUp(discountedTotal);
   const animatedWithTax = useCountUp(totalWithTax);
+  const animatedDiscount = useCountUp(discount);
 
   const selectedItems = Array.from(selectedIds).map((id) => {
     for (const cat of CATEGORIES) {
@@ -816,6 +864,7 @@ export default function Home() {
   function handleReset() {
     setSelectedIds(new Set());
     setQuantities({});
+    setDiscountType(null);
   }
 
   const activePreviewData = activePreview ? BOOTH_PREVIEWS[activePreview] : null;
@@ -942,6 +991,140 @@ export default function Home() {
               </motion.div>
             )}
 
+            {/* Secret discount area */}
+            <AnimatePresence>
+              {secretVisible && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.97 }}
+                  transition={{ type: "spring", damping: 22, stiffness: 280 }}
+                  className="rounded-xl overflow-hidden"
+                  style={{
+                    border: `1px solid ${RED}50`,
+                    background: `linear-gradient(135deg, oklch(0.17 0.025 20), oklch(0.14 0.015 20))`,
+                  }}
+                >
+                  <div
+                    className="px-5 py-3 flex items-center gap-2"
+                    style={{ borderBottom: `1px solid ${RED}30` }}
+                  >
+                    <Sparkles size={14} style={{ color: RED_LIGHT }} />
+                    <span
+                      className="text-xs font-semibold tracking-widest uppercase"
+                      style={{ color: RED_LIGHT }}
+                    >
+                      Special Discount
+                    </span>
+                    <button
+                      className="ml-auto transition-colors"
+                      style={{ color: IVORY_FAINT }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = IVORY_MUTED)}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = IVORY_FAINT)}
+                      onClick={() => { setSecretVisible(false); setDiscountType(null); }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <div className="px-5 py-4 space-y-3">
+                    <p className="text-xs leading-relaxed" style={{ color: IVORY_FAINT }}>
+                      出展スペース（パッケージ・スペースのみ）に適用されます。
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Early discount button */}
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.97 }}
+                        className="relative rounded-lg px-3 py-3 text-left transition-all"
+                        style={{
+                          background: discountType === "early"
+                            ? `linear-gradient(135deg, ${RED}, oklch(0.55 0.20 20))`
+                            : "oklch(1 0 0 / 5%)",
+                          border: `1px solid ${discountType === "early" ? RED : "oklch(1 0 0 / 15%)"}`,
+                        }}
+                        onClick={() => setDiscountType(discountType === "early" ? null : "early")}
+                      >
+                        {discountType === "early" && (
+                          <span
+                            className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                            style={{ background: "oklch(1 0 0 / 25%)" }}
+                          >
+                            <Check size={9} style={{ color: IVORY }} />
+                          </span>
+                        )}
+                        <Tag size={13} style={{ color: discountType === "early" ? IVORY : RED_LIGHT }} className="mb-1.5" />
+                        <p
+                          className="text-xs font-bold leading-tight"
+                          style={{ color: discountType === "early" ? IVORY : IVORY_MUTED }}
+                        >
+                          早期割引
+                        </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: discountType === "early" ? "oklch(1 0 0 / 75%)" : IVORY_FAINT }}
+                        >
+                          −¥30,000 / 小間
+                        </p>
+                      </motion.button>
+
+                      {/* Repeat discount button */}
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.97 }}
+                        className="relative rounded-lg px-3 py-3 text-left transition-all"
+                        style={{
+                          background: discountType === "repeat"
+                            ? `linear-gradient(135deg, ${RED}, oklch(0.55 0.20 20))`
+                            : "oklch(1 0 0 / 5%)",
+                          border: `1px solid ${discountType === "repeat" ? RED : "oklch(1 0 0 / 15%)"}`,
+                        }}
+                        onClick={() => setDiscountType(discountType === "repeat" ? null : "repeat")}
+                      >
+                        {discountType === "repeat" && (
+                          <span
+                            className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                            style={{ background: "oklch(1 0 0 / 25%)" }}
+                          >
+                            <Check size={9} style={{ color: IVORY }} />
+                          </span>
+                        )}
+                        <Sparkles size={13} style={{ color: discountType === "repeat" ? IVORY : RED_LIGHT }} className="mb-1.5" />
+                        <p
+                          className="text-xs font-bold leading-tight"
+                          style={{ color: discountType === "repeat" ? IVORY : IVORY_MUTED }}
+                        >
+                          リピート割引
+                        </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: discountType === "repeat" ? "oklch(1 0 0 / 75%)" : IVORY_FAINT }}
+                        >
+                          −¥60,000 / 小間
+                        </p>
+                      </motion.button>
+                    </div>
+
+                    {discountType && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="rounded-lg px-3 py-2 flex items-center justify-between"
+                        style={{ background: `${RED}18`, border: `1px solid ${RED}35` }}
+                      >
+                        <span className="text-xs" style={{ color: IVORY_MUTED }}>
+                          {discountType === "early" ? "早期割引" : "リピート割引"}適用中
+                        </span>
+                        <span className="text-sm font-bold" style={{ color: RED_LIGHT }}>
+                          −{formatYen(discount)}
+                        </span>
+                      </motion.div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Cancel policy */}
             <div
               className="rounded-xl p-5 mt-2"
@@ -1062,6 +1245,22 @@ export default function Home() {
                 className="px-5 py-4"
                 style={{ borderTop: "1px solid oklch(1 0 0 / 8%)", background: "oklch(0.15 0.01 20)" }}
               >
+                {discount > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="flex items-center justify-between mb-2 pb-2"
+                    style={{ borderBottom: `1px dashed ${RED}40` }}
+                  >
+                    <span className="text-xs flex items-center gap-1" style={{ color: RED_LIGHT }}>
+                      <Tag size={10} />
+                      {discountType === "early" ? "早期割引" : "リピート割引"}
+                    </span>
+                    <span className="text-sm font-semibold amount-display" style={{ color: RED_LIGHT }}>
+                      −{formatYen(animatedDiscount)}
+                    </span>
+                  </motion.div>
+                )}
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm" style={{ color: IVORY_FAINT }}>合計（税別）</span>
                   <span className="text-lg font-bold amount-display" style={{ color: IVORY }}>
@@ -1098,9 +1297,12 @@ export default function Home() {
                     >
                       {formatYen(animatedWithTax)}
                     </p>
-                    <p className="text-xs mt-1" style={{ color: IVORY_FAINT }}>
-                      {selectedIds.size}件のオプション選択中
-                    </p>
+              <p className="text-xs mt-1" style={{ color: IVORY_FAINT }}>
+                  {selectedIds.size}件のオプション選択中
+                  {discount > 0 && (
+                    <span style={{ color: RED_LIGHT }}> · 割引適用済</span>
+                  )}
+                </p>
                   </motion.div>
                 )}
               </div>
@@ -1111,9 +1313,15 @@ export default function Home() {
               className="mt-4 rounded-xl px-5 py-4"
               style={{ border: "1px solid oklch(1 0 0 / 8%)", background: CARD_BG }}
             >
-              <p className="text-xs mb-2 font-medium" style={{ color: IVORY_FAINT }}>
+              {/* Secret trigger: ロゴを5回クリックで秘密エリアを表示 */}
+              <button
+                className="text-xs mb-2 font-medium w-full text-left transition-opacity"
+                style={{ color: IVORY_FAINT, opacity: 0.7 }}
+                onClick={handleSecretTrigger}
+                title=""
+              >
                 お問い合わせ・申込先
-              </p>
+              </button>
               <p className="text-sm font-semibold" style={{ color: IVORY_MUTED }}>
                 BEYOND BEAUTY TOKYO 事務局
               </p>

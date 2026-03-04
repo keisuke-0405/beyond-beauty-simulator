@@ -17,8 +17,8 @@ import { Check, ChevronDown, ChevronUp, Info, X, Minus, Plus, ZoomIn } from "luc
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/hero-red-hw6DdkpeYAjQrn8iYmXD9h.webp";
 
-const IMG_1KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/1koma_98007682.png";
-const IMG_2KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/2koma_7a7a250f.png";
+const IMG_1KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/1koma-new_4dbc4b76.png";
+const IMG_2KOMA = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/2koma-new_47936a0e.png";
 const IMG_STARTUP = "https://d2xsxph8kpxj0f.cloudfront.net/91578427/nvFmNv6dsftwwPRpeksQxP/startup-booth_e98e635a.jpg";
 
 const RED = "oklch(0.48 0.22 20)";

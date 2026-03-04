@@ -1,8 +1,8 @@
 /*
  * BEYOND BEAUTY TOKYO 2026 出展料金シミュレーター
- * Design: Modern Trade Show Dashboard
- * Philosophy: Deep navy background + gold accents, professional elegance
- * Colors: Deep navy (#0F1B2D), card navy (#1A2B42), gold (#D4A853), white text
+ * Design: Shiseido Red — Japanese Luxury Beauty
+ * Philosophy: Deep crimson red + ivory white, refined elegance inspired by Shiseido brand identity
+ * Colors: Shiseido Red (#C8102E / oklch equiv), deep charcoal bg, ivory text, rose gold accents
  * Typography: Playfair Display (headings) + Noto Sans JP (body)
  */
 
@@ -35,50 +35,55 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-gold: var(--gold);
-  --color-gold-light: var(--gold-light);
-  --color-navy-deep: var(--navy-deep);
-  --color-navy-card: var(--navy-card);
-  --color-navy-hover: var(--navy-hover);
 }
 
 :root {
-  --radius: 0.5rem;
+  --radius: 0.375rem;
 
-  /* Navy × Gold palette */
-  --navy-deep: oklch(0.18 0.04 240);
-  --navy-card: oklch(0.22 0.04 240);
-  --navy-hover: oklch(0.26 0.04 240);
-  --gold: oklch(0.75 0.12 70);
-  --gold-light: oklch(0.88 0.10 70);
+  /* Shiseido Red palette */
+  /* Shiseido Red: #C8102E → oklch(0.48 0.22 20) */
+  --shiseido-red: oklch(0.48 0.22 20);
+  --shiseido-red-dark: oklch(0.38 0.20 20);
+  --shiseido-red-light: oklch(0.60 0.20 20);
+  --shiseido-red-muted: oklch(0.48 0.22 20 / 0.15);
 
-  --background: oklch(0.18 0.04 240);
-  --foreground: oklch(0.95 0.005 60);
+  /* Deep charcoal backgrounds */
+  --bg-deep: oklch(0.13 0.01 20);
+  --bg-card: oklch(0.17 0.015 20);
+  --bg-hover: oklch(0.20 0.015 20);
 
-  --card: oklch(0.22 0.04 240);
-  --card-foreground: oklch(0.95 0.005 60);
+  /* Ivory / warm white text */
+  --ivory: oklch(0.97 0.008 60);
+  --ivory-muted: oklch(0.75 0.008 60);
+  --ivory-faint: oklch(0.50 0.005 60);
 
-  --popover: oklch(0.22 0.04 240);
-  --popover-foreground: oklch(0.95 0.005 60);
+  --background: oklch(0.13 0.01 20);
+  --foreground: oklch(0.97 0.008 60);
 
-  --primary: oklch(0.75 0.12 70);
-  --primary-foreground: oklch(0.15 0.03 240);
+  --card: oklch(0.17 0.015 20);
+  --card-foreground: oklch(0.97 0.008 60);
 
-  --secondary: oklch(0.26 0.04 240);
-  --secondary-foreground: oklch(0.85 0.005 60);
+  --popover: oklch(0.17 0.015 20);
+  --popover-foreground: oklch(0.97 0.008 60);
 
-  --muted: oklch(0.26 0.04 240);
-  --muted-foreground: oklch(0.65 0.01 240);
+  --primary: oklch(0.48 0.22 20);
+  --primary-foreground: oklch(0.97 0.008 60);
 
-  --accent: oklch(0.75 0.12 70);
-  --accent-foreground: oklch(0.15 0.03 240);
+  --secondary: oklch(0.20 0.015 20);
+  --secondary-foreground: oklch(0.85 0.008 60);
+
+  --muted: oklch(0.20 0.015 20);
+  --muted-foreground: oklch(0.55 0.008 60);
+
+  --accent: oklch(0.48 0.22 20);
+  --accent-foreground: oklch(0.97 0.008 60);
 
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.75 0.12 70);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.48 0.22 20);
 }
 
 @layer base {
@@ -131,31 +136,33 @@
     }
   }
 
-  /* Gold glow effect for selected items */
-  .gold-glow {
-    box-shadow: 0 0 0 2px oklch(0.75 0.12 70), 0 4px 20px oklch(0.75 0.12 70 / 0.2);
-  }
-
-  /* Subtle card hover */
+  /* Option card styles */
   .option-card {
-    transition: all 0.25s ease;
-    border: 1px solid oklch(1 0 0 / 8%);
+    transition: all 0.2s ease;
+    border: 1px solid oklch(1 0 0 / 7%);
+    background-color: oklch(0.17 0.015 20);
   }
 
   .option-card:hover {
-    border-color: oklch(0.75 0.12 70 / 0.5);
-    background-color: oklch(0.26 0.04 240);
+    border-color: oklch(0.48 0.22 20 / 0.4);
+    background-color: oklch(0.20 0.015 20);
   }
 
   .option-card.selected {
-    border-color: oklch(0.75 0.12 70);
-    background-color: oklch(0.24 0.05 240);
-    box-shadow: 0 0 0 1px oklch(0.75 0.12 70 / 0.3), inset 0 0 30px oklch(0.75 0.12 70 / 0.05);
+    border-color: oklch(0.48 0.22 20);
+    background-color: oklch(0.18 0.03 20);
+    box-shadow: 0 0 0 1px oklch(0.48 0.22 20 / 0.25), inset 0 0 40px oklch(0.48 0.22 20 / 0.06);
   }
 
   /* Amount display */
   .amount-display {
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
+  }
+
+  /* Thin red divider line (Shiseido signature) */
+  .red-line {
+    height: 2px;
+    background: linear-gradient(90deg, oklch(0.48 0.22 20), oklch(0.60 0.20 20), oklch(0.48 0.22 20));
   }
 }

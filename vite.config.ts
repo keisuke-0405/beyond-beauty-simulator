@@ -167,6 +167,9 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
   },
+  // GitHub Pages build config (used when GITHUB_PAGES=true)
+  // Run: GITHUB_PAGES=true pnpm build
+  // Output goes to /docs for GitHub Pages deployment from main branch
   server: {
     port: 3000,
     strictPort: false, // Will find next available port if 3000 is busy
